@@ -52,7 +52,17 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
+    <repositories>
+        <repository>
+            <id>cn.com.wind</id>
+            <name>wind public repository</name>
+            <url>http://10.100.1.27:8688/repository/maven-public/</url>
+            <snapshots>
+                <updatePolicy>always</updatePolicy>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
     <build>
         <plugins>
             <plugin>
