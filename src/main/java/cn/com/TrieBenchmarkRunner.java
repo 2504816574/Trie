@@ -12,6 +12,7 @@ public class TrieBenchmarkRunner {
 	private static final boolean SAVE_TO_FILE = false;
 	private static final int SEARCH_COUNT = 10000;
 	private static final int MUTATE_COUNT = 1000;
+	private static final int[] COMP_PART_SUFFIXES = {0, 1, 2, 3, 4, 5, 6};
 	private static int totalDataCount = 0;
 
 	public static void main(String[] args) throws Exception {
@@ -24,23 +25,16 @@ public class TrieBenchmarkRunner {
 			System.err.println(" 未找到数据库，请先运行 TrieDataInitializer！");
 			return;
 		}
-
-		// 读取总数据量
-		try (Connection conn = DriverManager.getConnection(DB_URL);
-		     Statement stmt = conn.createStatement();
-		     ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM company_info")) {
-			if (rs.next()) totalDataCount = rs.getInt(1);
-		}
-		System.out.println(">> 数据库总量: " + totalDataCount + " 条\n");
-
 		long jvmBaseMem = gcAndGetMemory();
 		System.out.println(">> JVM 基准内存: " + (jvmBaseMem / 1024 / 1024) + " MB\n");
 
 		// 预取 CRUD 样本数据
 		System.out.println(">> 预取增删改样本 " + MUTATE_COUNT + " 条...");
+//		List<String[]> mutateSamples =new ArrayList<>();
 		List<String[]> mutateSamples = fetchSamples(MUTATE_COUNT);
 		System.out.println(">> 增删改样本获取完成");
-		System.out.println(">> 生成多样化查询样本 " + SEARCH_COUNT + " 条(含精确/片段/脏数据/多公司)...");
+		System.out.println(">> 生成多样化查询样本 " + mutateSamples.size() + " 条(含精确/片段/脏数据/多公司)...");
+//		List<String> searchQueries = new ArrayList<>();
 		List<String> searchQueries = generateSearchQueries(SEARCH_COUNT);
 		System.out.println(">> 查询样本生成完成\n");
 
@@ -52,18 +46,21 @@ public class TrieBenchmarkRunner {
 		// 标准树：10分区+正序，code%10 路由到10棵隔离树，分散读写锁竞争
 //		test3_std_part_normal(searchQueries, mutateSamples);
 		// 标准树：10分区+反序，堆内标准树终极形态（合并+并发隔离）
-//		test4_std_part_reverse(searchQueries, mutateSamples);
+//		test4_std_part_reverse(searchQueries, m utateSamples);
 
 
-		// 压缩前缀树：10分区+反序，最终生产形态（路径压缩+反序+分区并发）
+
+
+
+		// 压缩前缀树：7分区+正序，只加载尾缀0-6的分区
+		test7_comp_part_normal(searchQueries, mutateSamples);
+		// 压缩前缀树：7分区+反序，只加载尾缀0-6的分区
 		test8_comp_part_reverse(searchQueries, mutateSamples);
+
 		// 压缩前缀树(Radix Tree)：路径压缩合并单子节点，正序入树，节点数远少于标准树
 		test5_comp_unpart_normal(searchQueries, mutateSamples);
 		// 压缩前缀树：反转入树，结合路径压缩+后缀同质化，节点数最少
 		test6_comp_unpart_reverse(searchQueries, mutateSamples);
-		// 压缩前缀树：10分区+正序，10棵隔离 Radix Tree，并发安全
-		test7_comp_part_normal(searchQueries, mutateSamples);
-
 
 		// 生成报表
 		new File(BASE_DIR).mkdirs();
@@ -234,15 +231,16 @@ public class TrieBenchmarkRunner {
 	}
 
 	// ========================================================================
-	// 【7】压缩树 - 尾缀10分区 - 正序
+	// 【7】压缩树 - 尾缀7分区(0-6) - 正序
 	// ========================================================================
 	private static void test7_comp_part_normal(List<String> searchQueries, List<String[]> mutateSamples) throws Exception {
-		System.out.println("\n>>> [7] 压缩树 - 尾缀10分区 - 正序");
+		System.out.println("\n>>> [7] 压缩树 - 尾缀7分区(0-6) - 正序");
 		long baseMem = gcAndGetMemory();
 		long s = System.currentTimeMillis();
-		CompressedTrie[] c = new CompressedTrie[10];
-		for (int i = 0; i < 10; i++) c[i] = new CompressedTrie();
-		loadToPartitionedCompressedTries(c, false);
+		int n = COMP_PART_SUFFIXES.length;
+		CompressedTrie[] c = new CompressedTrie[n];
+		for (int i = 0; i < n; i++) c[i] = new CompressedTrie();
+		loadToPartitionedCompressedTries(c, false, COMP_PART_SUFFIXES);
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
@@ -251,7 +249,7 @@ public class TrieBenchmarkRunner {
 
 		long[] crud = benchmarkCompCrudPart(c, mutateSamples, false);
 
-		BenchmarkResult.create("压缩树-10分区-正序", "压缩树 10分区 正序", totalDataCount, loadMs, memGb, false)
+		BenchmarkResult.create("压缩树-7分区-正序", "压缩树 7分区(0-6) 正序", totalDataCount, loadMs, memGb, false)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -261,16 +259,17 @@ public class TrieBenchmarkRunner {
 	}
 
 	// ========================================================================
-	// 【8】压缩树 - 尾缀10分区 - 反序
+	// 【8】压缩树 - 尾缀7分区(0-6) - 反序
 	// ========================================================================
 	private static void test8_comp_part_reverse(List<String> searchQueries, List<String[]> mutateSamples) throws Exception {
-		System.out.println("\n>>> [8] 压缩树 - 尾缀10分区 - 反序");
+		System.out.println("\n>>> [8] 压缩树 - 尾缀7分区(0-6) - 反序");
 		printMem();
 		long baseMem = gcAndGetMemory();
 		long s = System.currentTimeMillis();
-		CompressedTrie[] c = new CompressedTrie[10];
-		for (int i = 0; i < 10; i++) c[i] = new CompressedTrie();
-		loadToPartitionedCompressedTries(c, true);
+		int n = COMP_PART_SUFFIXES.length;
+		CompressedTrie[] c = new CompressedTrie[n];
+		for (int i = 0; i < n; i++) c[i] = new CompressedTrie();
+		loadToPartitionedCompressedTries(c, true, COMP_PART_SUFFIXES);
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
@@ -279,7 +278,7 @@ public class TrieBenchmarkRunner {
 
 		long[] crud = benchmarkCompCrudPart(c, mutateSamples, true);
 
-		BenchmarkResult.create("压缩树-10分区-反序", "压缩树 10分区 反序", totalDataCount, loadMs, memGb, false)
+		BenchmarkResult.create("压缩树-7分区-反序", "压缩树 7分区(0-6) 反序", totalDataCount, loadMs, memGb, false)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -328,10 +327,6 @@ public class TrieBenchmarkRunner {
 		String[] regions       = MockDataDictionary.REGIONS;
 		String[] charPool      = MockDataDictionary.CHAR_POOL;
 		String[] alphanumerics = MockDataDictionary.ALPHANUMERIC;
-		String[] separators    = MockDataDictionary.SPECIAL_SEPARATORS;
-		String[] bracketsL     = MockDataDictionary.BRACKET_LEFT;
-		String[] bracketsR     = MockDataDictionary.BRACKET_RIGHT;
-
 		int exactBase    = (int)(count * 0.30);
 		int fragmentBase = (int)(count * 0.25);
 		int multiBase    = (int)(count * 0.15);
@@ -374,9 +369,6 @@ public class TrieBenchmarkRunner {
 					start = r.nextInt(src.length() - subLen + 1);
 				}
 				sb.append(src, start, start + subLen);
-				if (j < segCount - 1 && r.nextBoolean()) {
-					sb.append(separators[r.nextInt(Math.min(5, separators.length))]);
-				}
 			}
 			queries.add(sb.toString());
 		}
@@ -401,12 +393,10 @@ public class TrieBenchmarkRunner {
 			int type = r.nextInt(4);
 			switch (type) {
 				case 0:
-					// 特殊字符+短词
-					queries.add(separators[r.nextInt(separators.length)]
-							+ charPool[r.nextInt(charPool.length)]
-							+ bracketsL[r.nextInt(bracketsL.length)]
+					// 中英数字混排
+					queries.add(charPool[r.nextInt(charPool.length)]
 							+ r.nextInt(999)
-							+ bracketsR[r.nextInt(bracketsR.length)]);
+							+ regions[r.nextInt(regions.length)]);
 					break;
 				case 1:
 					// 纯中英数混排
@@ -415,10 +405,10 @@ public class TrieBenchmarkRunner {
 							+ alphanumerics[r.nextInt(alphanumerics.length)]);
 					break;
 				case 2:
-					// 多个空白+短字符
+					// 多段中英随机拼接
 					StringBuilder sb = new StringBuilder();
 					for (int k = 0; k < 3; k++) {
-						sb.append(separators[r.nextInt(Math.min(8, separators.length))]);
+						sb.append(alphanumerics[r.nextInt(alphanumerics.length)]);
 						sb.append(charPool[r.nextInt(charPool.length)]);
 					}
 					queries.add(sb.toString());
@@ -472,8 +462,9 @@ public class TrieBenchmarkRunner {
 	// --- 压缩树分区 search ---
 	private static long benchmarkSearchCompPart(CompressedTrie[] tries, List<String> queries, boolean reverse) {
 		long start = System.nanoTime();
+		int n = tries.length;
 		for (String q : queries) {
-			int pid = Math.abs(q.hashCode()) % 10;
+			int pid = Math.abs(q.hashCode()) % n;
 			tries[pid].search(q, reverse);
 		}
 		return (System.nanoTime() - start) / 1_000_000;
@@ -482,7 +473,7 @@ public class TrieBenchmarkRunner {
 	// --- CRUD benchmark ---
 	private static long[] benchmarkStdCrudOne(StandardTrie t, List<String[]> samples, boolean reverse) {
 		long tIns = 0, tUpd = 0, tDel = 0;
-		for (int i = 0; i < MUTATE_COUNT; i++) {
+		for (int i = 0; i < samples.size(); i++) {
 			String name = samples.get(i)[0];
 			long code = Long.parseLong(samples.get(i)[1]);
 			long s1 = System.nanoTime();
@@ -501,7 +492,7 @@ public class TrieBenchmarkRunner {
 
 	private static long[] benchmarkStdCrudPart(StandardTrie[] t, List<String[]> samples, boolean reverse) {
 		long tIns = 0, tUpd = 0, tDel = 0;
-		for (int i = 0; i < MUTATE_COUNT; i++) {
+		for (int i = 0; i < samples.size(); i++) {
 			String name = samples.get(i)[0];
 			long code = Long.parseLong(samples.get(i)[1]);
 			int pid = (int) (code % 10);
@@ -525,7 +516,7 @@ public class TrieBenchmarkRunner {
 
 	private static long[] benchmarkCompCrudOne(CompressedTrie c, List<String[]> samples, boolean reverse) {
 		long tIns = 0, tUpd = 0, tDel = 0;
-		for (int i = 0; i < MUTATE_COUNT; i++) {
+		for (int i = 0; i < samples.size(); i++) {
 			String name = samples.get(i)[0];
 			long code = Long.parseLong(samples.get(i)[1]);
 			long s1 = System.nanoTime();
@@ -544,7 +535,7 @@ public class TrieBenchmarkRunner {
 
 	private static long[] benchmarkCompCrudPart(CompressedTrie[] c, List<String[]> samples, boolean reverse) {
 		long tIns = 0, tUpd = 0, tDel = 0;
-		for (int i = 0; i < MUTATE_COUNT; i++) {
+		for (int i = 0; i < samples.size(); i++) {
 			String name = samples.get(i)[0];
 			long code = Long.parseLong(samples.get(i)[1]);
 			int pid = (int) (code % 10);
@@ -657,14 +648,17 @@ public class TrieBenchmarkRunner {
 		}
 	}
 
-	private static void loadToPartitionedCompressedTries(CompressedTrie[] tries, boolean reverse) throws Exception {
-		// 10 个分区队列，生产者流式读 DB 放入，消费者拉取插入
-		BlockingQueue<String[]>[] queues = new BlockingQueue[10];
-		for (int i = 0; i < 10; i++) queues[i] = new LinkedBlockingQueue<>(20000);
+	private static void loadToPartitionedCompressedTries(CompressedTrie[] tries, boolean reverse, int[] allowedSuffixes) throws Exception {
+		Set<Integer> suffixSet = new HashSet<>();
+		for (int s : allowedSuffixes) suffixSet.add(s);
 
-		// 启动 10 个消费者线程
-		Thread[] workers = new Thread[10];
-		for (int pid = 0; pid < 10; pid++) {
+		int partCount = tries.length;
+		BlockingQueue<String[]>[] queues = new BlockingQueue[partCount];
+		for (int i = 0; i < partCount; i++) queues[i] = new LinkedBlockingQueue<>(200000);
+
+		// 启动消费者线程
+		Thread[] workers = new Thread[partCount];
+		for (int pid = 0; pid < partCount; pid++) {
 			final int p = pid;
 			workers[p] = new Thread(() -> {
 				try {
@@ -680,7 +674,7 @@ public class TrieBenchmarkRunner {
 			workers[p].start();
 		}
 
-		// 生产者：流式读 DB，放入队列
+		// 生产者：流式读 DB，只加载允许的后缀分区
 		int total = 0;
 		try (Connection conn = DriverManager.getConnection(DB_URL);
 		     Statement stmt = conn.createStatement();
@@ -688,14 +682,17 @@ public class TrieBenchmarkRunner {
 			System.out.print("      ");
 			while (rs.next()) {
 				long code = rs.getLong(1);
-				queues[(int) (code % 10)].put(new String[]{rs.getString(2), String.valueOf(code)});
-				if (++total % 100000 == 0) System.out.print(".");
+				int suffix = (int) (code % 10);
+				if (suffixSet.contains(suffix)) {
+					queues[suffix].put(new String[]{rs.getString(2), String.valueOf(code)});
+					if (++total % 100000 == 0) System.out.print(".");
+				}
 			}
 			System.out.println(" 共" + total + "条");
 		}
 
 		// 生产者完成，向每个队列放入毒丸
-		for (int i = 0; i < 10; i++) queues[i].put(POISON);
+		for (int i = 0; i < partCount; i++) queues[i].put(POISON);
 
 		// 等待所有消费者退出
 		for (Thread w : workers) w.join();
