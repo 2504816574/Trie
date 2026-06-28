@@ -1,6 +1,8 @@
 package cn.com;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * 压缩前缀树（Radix Tree / Patricia Trie），纯堆内实现，支持增删查。
@@ -51,6 +53,52 @@ public class CompressedTrie {
 		pos += child.label.length;
 
 		return search(child, cps, pos);
+	}
+
+	/**
+	 * 扫描短文本，从每个字符位置出发尝试匹配 Trie 中的公司名。
+	 * 返回所有匹配到的公司名、code 及在原文本中的下标。
+	 */
+	public List<MatchResult> scan(String text, boolean reverse) {
+		String target = reverse ? new StringBuilder(text).reverse().toString() : text;
+		int[] cps = target.codePoints().toArray();
+		List<MatchResult> results = new ArrayList<>();
+
+		int originalLen = text.length();
+		for (int start = 0; start < cps.length; start++) {
+			scanFrom(root, cps, start, start, results, text, originalLen, reverse);
+		}
+		return results;
+	}
+
+	/**
+	 * 从 node 出发，匹配 cps 中从 pos 开始的字符，累积 start 作为扫描起点。
+	 */
+	private void scanFrom(RadixNode node, int[] cps, int scanStart, int pos,
+	                       List<MatchResult> results, String text, int originalLen, boolean reverse) {
+		if (node.status == 3 && pos > scanStart) {
+			int matchStart, matchEnd;
+			if (reverse) {
+				matchStart = originalLen - pos - 1 + 1;  // +1 因为 pos 已走到下一个字符
+				matchEnd = originalLen - scanStart;
+			} else {
+				matchStart = scanStart;
+				matchEnd = pos;
+			}
+			// 仅当 end > start 时才是有效匹配（排除空 label 的根节点）
+			if (matchEnd > matchStart) {
+				String matchedText = text.substring(matchStart, matchEnd);
+				results.add(new MatchResult(matchedText, node.code, matchStart, matchEnd));
+			}
+		}
+
+		if (pos >= cps.length || !node.hasChildren()) return;
+
+		RadixNode child = findChild(node, cps[pos]);
+		if (child == null) return;
+		if (!matchLabel(child.label, cps, pos)) return;
+
+		scanFrom(child, cps, scanStart, pos + child.label.length, results, text, originalLen, reverse);
 	}
 
 	// ========================================================================
@@ -239,5 +287,20 @@ public class CompressedTrie {
 				return;
 			}
 		}
+	}
+
+	public long countNodes() {
+		return countNodesRecursive(root);
+	}
+
+	private long countNodesRecursive(RadixNode node) {
+		if (node == null) return 0;
+		long count = 1; // 当前节点
+		if (node.children != null) {
+			for (int i = 0; i < node.childrenCount; i++) {
+				count += countNodesRecursive(node.children[i]);
+			}
+		}
+		return count;
 	}
 }

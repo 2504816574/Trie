@@ -1,7 +1,9 @@
 package cn.com;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * 严格按照线上 TrieNode 对象模型构建的标准前缀树。
@@ -82,6 +84,42 @@ public class StandardTrie {
 		return (curr.status == 3 || curr.status == 2) ? curr.code : -1;
 	}
 
+	/**
+	 * 扫描短文本，从每个字符位置出发尝试匹配 Trie 中的公司名。
+	 * 返回所有匹配到的公司名、code 及在原文本中的下标。
+	 */
+	public List<MatchResult> scan(String text, boolean reverse) {
+		String target = reverse ? new StringBuilder(text).reverse().toString() : text;
+		int[] cps = target.codePoints().toArray();
+		List<MatchResult> results = new ArrayList<>();
+
+		int originalLen = text.length();
+		for (int start = 0; start < cps.length; start++) {
+			TrieNode curr = root;
+			for (int pos = start; pos < cps.length; pos++) {
+				if (curr.childArray == null) break;
+				TrieNode dummy = new TrieNode(cps[pos]);
+				int idx = Arrays.binarySearch(curr.childArray, dummy);
+				if (idx < 0) break;
+				curr = curr.childArray[idx];
+				if (curr.status == 3 || curr.status == 2) {
+					int matchStart, matchEnd;
+					if (reverse) {
+						// target 是反向的，还原到原始文本坐标
+						matchStart = originalLen - pos - 1;
+						matchEnd = originalLen - start;
+					} else {
+						matchStart = start;
+						matchEnd = pos + 1;
+					}
+					String matchedText = text.substring(matchStart, matchEnd);
+					results.add(new MatchResult(matchedText, curr.code, matchStart, matchEnd));
+				}
+			}
+		}
+		return results;
+	}
+
 	public boolean delete(String word, boolean reverse) {
 		String target = reverse ? new StringBuilder(word).reverse().toString() : word;
 		int[] cps = target.codePoints().toArray();
@@ -101,4 +139,19 @@ public class StandardTrie {
 	}
 
 	public TrieNode getRoot() { return root; }
+
+	public long countNodes() {
+		return countNodesRecursive(root);
+	}
+
+	private long countNodesRecursive(TrieNode node) {
+		if (node == null) return 0;
+		long count = 1; // 当前节点
+		if (node.childArray != null) {
+			for (TrieNode child : node.childArray) {
+				count += countNodesRecursive(child);
+			}
+		}
+		return count;
+	}
 }

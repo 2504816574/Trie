@@ -13,6 +13,8 @@ public class TrieBenchmarkRunner {
 	private static final int SEARCH_COUNT = 10000;
 	private static final int MUTATE_COUNT = 1000;
 	private static final int[] COMP_PART_SUFFIXES = {0, 1, 2, 3, 4, 5, 6};
+	private static final int VERIFY_SAMPLE_COUNT = 300;
+	private static final int VERIFY_CRUD_COUNT = 100;
 	private static int totalDataCount = 0;
 
 	public static void main(String[] args) throws Exception {
@@ -49,9 +51,6 @@ public class TrieBenchmarkRunner {
 //		test4_std_part_reverse(searchQueries, m utateSamples);
 
 
-
-
-
 		// 压缩前缀树：7分区+正序，只加载尾缀0-6的分区
 		test7_comp_part_normal(searchQueries, mutateSamples);
 		// 压缩前缀树：7分区+反序，只加载尾缀0-6的分区
@@ -68,7 +67,14 @@ public class TrieBenchmarkRunner {
 		String jsonPath = BASE_DIR + "benchmark_report.json";
 		try (FileWriter fw = new FileWriter(jsonPath)) { fw.write(json); }
 		System.out.println("\n 报表已生成: " + jsonPath);
-		System.out.println("请用浏览器打开: " + BASE_DIR + "benchmark_report.html");
+
+		// 保存验证样本
+		String verifyJson = VerificationSample.toJson();
+		String verifyPath = BASE_DIR + "verification_samples.json";
+		try (FileWriter fw = new FileWriter(verifyPath)) { fw.write(verifyJson); }
+		System.out.println(" 验证样本已生成: " + verifyPath + " (" + VerificationSample.samples.size() + " 条记录)");
+
+		System.out.println("请用浏览器打开: " + BASE_DIR + "verify.html");
 	}
 
 	// ========================================================================
@@ -83,12 +89,15 @@ public class TrieBenchmarkRunner {
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
+		long nodeCnt = t.countNodes();
+		System.out.printf("    节点数: %,d%n", nodeCnt);
 
-		long searchMs = benchmarkSearchStdOne(t, searchQueries, false);
+		long searchMs = benchmarkSearchStdOne("标准树-不分区-正序", t, searchQueries, false);
 
-		long[] crud = benchmarkStdCrudOne(t, mutateSamples, false);
+		long[] crud = benchmarkStdCrudOne("标准树-不分区-正序", t, mutateSamples, false);
 
 		BenchmarkResult.create("标准树-不分区-正序", "标准树 不分区 正序", totalDataCount, loadMs, memGb, false)
+			.nodes(nodeCnt)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -109,12 +118,15 @@ public class TrieBenchmarkRunner {
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
+		long nodeCnt = t.countNodes();
+		System.out.printf("    节点数: %,d%n", nodeCnt);
 
-		long searchMs = benchmarkSearchStdOne(t, searchQueries, true);
+		long searchMs = benchmarkSearchStdOne("标准树-不分区-反序", t, searchQueries, true);
 
-		long[] crud = benchmarkStdCrudOne(t, mutateSamples, true);
+		long[] crud = benchmarkStdCrudOne("标准树-不分区-反序", t, mutateSamples, true);
 
 		BenchmarkResult.create("标准树-不分区-反序", "标准树 不分区 反序", totalDataCount, loadMs, memGb, false)
+			.nodes(nodeCnt)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -136,12 +148,16 @@ public class TrieBenchmarkRunner {
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
+		long nodeCnt = 0;
+		for (StandardTrie trie : t) nodeCnt += trie.countNodes();
+		System.out.printf("    节点数: %,d%n", nodeCnt);
 
-		long searchMs = benchmarkSearchStdPart(t, searchQueries, false);
+		long searchMs = benchmarkSearchStdPart("标准树-10分区-正序", t, searchQueries, false);
 
-		long[] crud = benchmarkStdCrudPart(t, mutateSamples, false);
+		long[] crud = benchmarkStdCrudPart("标准树-10分区-正序", t, mutateSamples, false);
 
 		BenchmarkResult.create("标准树-10分区-正序", "标准树 10分区 正序", totalDataCount, loadMs, memGb, false)
+			.nodes(nodeCnt)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -163,12 +179,16 @@ public class TrieBenchmarkRunner {
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
+		long nodeCnt = 0;
+		for (StandardTrie trie : t) nodeCnt += trie.countNodes();
+		System.out.printf("    节点数: %,d%n", nodeCnt);
 
-		long searchMs = benchmarkSearchStdPart(t, searchQueries, true);
+		long searchMs = benchmarkSearchStdPart("标准树-10分区-反序", t, searchQueries, true);
 
-		long[] crud = benchmarkStdCrudPart(t, mutateSamples, true);
+		long[] crud = benchmarkStdCrudPart("标准树-10分区-反序", t, mutateSamples, true);
 
 		BenchmarkResult.create("标准树-10分区-反序", "标准树 10分区 反序", totalDataCount, loadMs, memGb, false)
+			.nodes(nodeCnt)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -190,12 +210,15 @@ public class TrieBenchmarkRunner {
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
+		long nodeCnt = c.countNodes();
+		System.out.printf("    节点数: %,d%n", nodeCnt);
 
-		long searchMs = benchmarkSearchCompOne(c, searchQueries, false);
+		long searchMs = benchmarkSearchCompOne("压缩树-不分区-正序", c, searchQueries, false);
 
-		long[] crud = benchmarkCompCrudOne(c, mutateSamples, false);
+		long[] crud = benchmarkCompCrudOne("压缩树-不分区-正序", c, mutateSamples, false);
 
 		BenchmarkResult.create("压缩树-不分区-正序", "压缩树 不分区 正序", totalDataCount, loadMs, memGb, false)
+			.nodes(nodeCnt)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -216,12 +239,15 @@ public class TrieBenchmarkRunner {
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
+		long nodeCnt = c.countNodes();
+		System.out.printf("    节点数: %,d%n", nodeCnt);
 
-		long searchMs = benchmarkSearchCompOne(c, searchQueries, true);
+		long searchMs = benchmarkSearchCompOne("压缩树-不分区-反序", c, searchQueries, true);
 
-		long[] crud = benchmarkCompCrudOne(c, mutateSamples, true);
+		long[] crud = benchmarkCompCrudOne("压缩树-不分区-反序", c, mutateSamples, true);
 
 		BenchmarkResult.create("压缩树-不分区-反序", "压缩树 不分区 反序", totalDataCount, loadMs, memGb, false)
+			.nodes(nodeCnt)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -244,12 +270,16 @@ public class TrieBenchmarkRunner {
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
+		long nodeCnt = 0;
+		for (CompressedTrie trie : c) nodeCnt += trie.countNodes();
+		System.out.printf("    节点数: %,d%n", nodeCnt);
 
-		long searchMs = benchmarkSearchCompPart(c, searchQueries, false);
+		long searchMs = benchmarkSearchCompPart("压缩树-7分区-正序", c, searchQueries, false);
 
-		long[] crud = benchmarkCompCrudPart(c, mutateSamples, false);
+		long[] crud = benchmarkCompCrudPart("压缩树-7分区-正序", c, mutateSamples, false);
 
 		BenchmarkResult.create("压缩树-7分区-正序", "压缩树 7分区(0-6) 正序", totalDataCount, loadMs, memGb, false)
+			.nodes(nodeCnt)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -273,12 +303,16 @@ public class TrieBenchmarkRunner {
 		long loadMs = System.currentTimeMillis() - s;
 		double memGb = (gcAndGetMemory() - baseMem) / 1024.0 / 1024.0 / 1024.0;
 		System.out.printf("    构建耗时: %d ms, 内存: %.1f GB%n", loadMs, memGb);
+		long nodeCnt = 0;
+		for (CompressedTrie trie : c) nodeCnt += trie.countNodes();
+		System.out.printf("    节点数: %,d%n", nodeCnt);
 
-		long searchMs = benchmarkSearchCompPart(c, searchQueries, true);
+		long searchMs = benchmarkSearchCompPart("压缩树-7分区-反序", c, searchQueries, true);
 
-		long[] crud = benchmarkCompCrudPart(c, mutateSamples, true);
+		long[] crud = benchmarkCompCrudPart("压缩树-7分区-反序", c, mutateSamples, true);
 
 		BenchmarkResult.create("压缩树-7分区-反序", "压缩树 7分区(0-6) 反序", totalDataCount, loadMs, memGb, false)
+			.nodes(nodeCnt)
 			.search(searchMs, SEARCH_COUNT)
 			.crud(crud[0], crud[1], crud[2], MUTATE_COUNT)
 			.report();
@@ -432,65 +466,107 @@ public class TrieBenchmarkRunner {
 	}
 
 	// --- 标准树单树 search ---
-	private static long benchmarkSearchStdOne(StandardTrie trie, List<String> queries, boolean reverse) {
+	private static long benchmarkSearchStdOne(String testName, StandardTrie trie, List<String> queries, boolean reverse) {
 		long start = System.nanoTime();
-		for (String q : queries) {
-			trie.search(q, reverse);
+		for (int i = 0; i < queries.size(); i++) {
+			String q = queries.get(i);
+			long t0 = System.nanoTime();
+			List<MatchResult> matches = trie.scan(q, reverse);
+			long dur = System.nanoTime() - t0;
+			if (i < VERIFY_SAMPLE_COUNT) {
+				VerificationSample.search(testName, q, reverse, matches, dur);
+			}
 		}
 		return (System.nanoTime() - start) / 1_000_000;
 	}
 
 	// --- 标准树分区 search ---
-	private static long benchmarkSearchStdPart(StandardTrie[] tries, List<String> queries, boolean reverse) {
+	private static long benchmarkSearchStdPart(String testName, StandardTrie[] tries, List<String> queries, boolean reverse) {
 		long start = System.nanoTime();
-		for (String q : queries) {
+		for (int i = 0; i < queries.size(); i++) {
+			String q = queries.get(i);
 			int pid = Math.abs(q.hashCode()) % 10;
-			tries[pid].search(q, reverse);
+			long t0 = System.nanoTime();
+			List<MatchResult> matches = tries[pid].scan(q, reverse);
+			long dur = System.nanoTime() - t0;
+			if (i < VERIFY_SAMPLE_COUNT) {
+				VerificationSample.search(testName, q, reverse, matches, dur);
+			}
 		}
 		return (System.nanoTime() - start) / 1_000_000;
 	}
 
 	// --- 压缩树单树 search ---
-	private static long benchmarkSearchCompOne(CompressedTrie trie, List<String> queries, boolean reverse) {
+	private static long benchmarkSearchCompOne(String testName, CompressedTrie trie, List<String> queries, boolean reverse) {
 		long start = System.nanoTime();
-		for (String q : queries) {
-			trie.search(q, reverse);
+		for (int i = 0; i < queries.size(); i++) {
+			String q = queries.get(i);
+			long t0 = System.nanoTime();
+			List<MatchResult> matches = trie.scan(q, reverse);
+			long dur = System.nanoTime() - t0;
+			if (i < VERIFY_SAMPLE_COUNT) {
+				VerificationSample.search(testName, q, reverse, matches, dur);
+			}
 		}
 		return (System.nanoTime() - start) / 1_000_000;
 	}
 
 	// --- 压缩树分区 search ---
-	private static long benchmarkSearchCompPart(CompressedTrie[] tries, List<String> queries, boolean reverse) {
+	private static long benchmarkSearchCompPart(String testName, CompressedTrie[] tries, List<String> queries, boolean reverse) {
 		long start = System.nanoTime();
 		int n = tries.length;
-		for (String q : queries) {
+		for (int i = 0; i < queries.size(); i++) {
+			String q = queries.get(i);
 			int pid = Math.abs(q.hashCode()) % n;
-			tries[pid].search(q, reverse);
+			long t0 = System.nanoTime();
+			List<MatchResult> matches = tries[pid].scan(q, reverse);
+			long dur = System.nanoTime() - t0;
+			if (i < VERIFY_SAMPLE_COUNT) {
+				VerificationSample.search(testName, q, reverse, matches, dur);
+			}
 		}
 		return (System.nanoTime() - start) / 1_000_000;
 	}
 
 	// --- CRUD benchmark ---
-	private static long[] benchmarkStdCrudOne(StandardTrie t, List<String[]> samples, boolean reverse) {
+	private static long[] benchmarkStdCrudOne(String testName, StandardTrie t, List<String[]> samples, boolean reverse) {
 		long tIns = 0, tUpd = 0, tDel = 0;
 		for (int i = 0; i < samples.size(); i++) {
 			String name = samples.get(i)[0];
 			long code = Long.parseLong(samples.get(i)[1]);
+
+			String newName = "_BENCH_NEW_" + i;
+			long newCode = code + 10000000L;
 			long s1 = System.nanoTime();
-			t.insert("_BENCH_NEW_" + i, code + 10000000L, reverse);
+			t.insert(newName, newCode, reverse);
 			tIns += System.nanoTime() - s1;
+			if (i < VERIFY_CRUD_COUNT) {
+				long found = t.search(newName, reverse);
+				VerificationSample.crud(testName, "INSERT", newName, reverse, found, 0);
+			}
+
+			long upCode = code + 20000000L;
 			long s2 = System.nanoTime();
 			t.delete(name, reverse);
-			t.insert(name, code + 20000000L, reverse);
+			t.insert(name, upCode, reverse);
 			tUpd += System.nanoTime() - s2;
+			if (i < VERIFY_CRUD_COUNT) {
+				long foundDel = t.search(name, reverse);
+				VerificationSample.crud(testName, "UPDATE", name, reverse, foundDel, 0);
+			}
+
 			long s3 = System.nanoTime();
-			t.delete("_BENCH_NEW_" + i, reverse);
+			t.delete(newName, reverse);
 			tDel += System.nanoTime() - s3;
+			if (i < VERIFY_CRUD_COUNT) {
+				long foundAfterDel = t.search(newName, reverse);
+				VerificationSample.crud(testName, "DELETE", newName, reverse, foundAfterDel, 0);
+			}
 		}
 		return new long[]{ tIns / 1_000_000, tUpd / 1_000_000, tDel / 1_000_000 };
 	}
 
-	private static long[] benchmarkStdCrudPart(StandardTrie[] t, List<String[]> samples, boolean reverse) {
+	private static long[] benchmarkStdCrudPart(String testName, StandardTrie[] t, List<String[]> samples, boolean reverse) {
 		long tIns = 0, tUpd = 0, tDel = 0;
 		for (int i = 0; i < samples.size(); i++) {
 			String name = samples.get(i)[0];
@@ -498,61 +574,112 @@ public class TrieBenchmarkRunner {
 			int pid = (int) (code % 10);
 			long newCode = code + 10000000L;
 			int pidNew = (int) (newCode % 10);
+
+			String newName = "_BENCH_NEW_" + i;
 			long s1 = System.nanoTime();
-			t[pidNew].insert("_BENCH_NEW_" + i, newCode, reverse);
+			t[pidNew].insert(newName, newCode, reverse);
 			tIns += System.nanoTime() - s1;
+			if (i < VERIFY_CRUD_COUNT) {
+				long found = t[pidNew].search(newName, reverse);
+				VerificationSample.crud(testName, "INSERT", newName, reverse, found, 0);
+			}
+
 			long upCode = code + 20000000L;
 			int pidUp = (int) (upCode % 10);
 			long s2 = System.nanoTime();
 			t[pid].delete(name, reverse);
 			t[pidUp].insert(name, upCode, reverse);
 			tUpd += System.nanoTime() - s2;
+			if (i < VERIFY_CRUD_COUNT) {
+				long foundDel = t[pidUp].search(name, reverse);
+				VerificationSample.crud(testName, "UPDATE", name, reverse, foundDel, 0);
+			}
+
 			long s3 = System.nanoTime();
-			t[pidNew].delete("_BENCH_NEW_" + i, reverse);
+			t[pidNew].delete(newName, reverse);
 			tDel += System.nanoTime() - s3;
+			if (i < VERIFY_CRUD_COUNT) {
+				long foundAfterDel = t[pidNew].search(newName, reverse);
+				VerificationSample.crud(testName, "DELETE", newName, reverse, foundAfterDel, 0);
+			}
 		}
 		return new long[]{ tIns / 1_000_000, tUpd / 1_000_000, tDel / 1_000_000 };
 	}
 
-	private static long[] benchmarkCompCrudOne(CompressedTrie c, List<String[]> samples, boolean reverse) {
+	private static long[] benchmarkCompCrudOne(String testName, CompressedTrie c, List<String[]> samples, boolean reverse) {
 		long tIns = 0, tUpd = 0, tDel = 0;
 		for (int i = 0; i < samples.size(); i++) {
 			String name = samples.get(i)[0];
 			long code = Long.parseLong(samples.get(i)[1]);
+
+			String newName = "_BENCH_NEW_" + i;
+			long newCode = code + 10000000L;
 			long s1 = System.nanoTime();
-			c.insert("_BENCH_NEW_" + i, code + 10000000L, reverse);
+			c.insert(newName, newCode, reverse);
 			tIns += System.nanoTime() - s1;
+			if (i < VERIFY_CRUD_COUNT) {
+				long found = c.search(newName, reverse);
+				VerificationSample.crud(testName, "INSERT", newName, reverse, found, 0);
+			}
+
+			long upCode = code + 20000000L;
 			long s2 = System.nanoTime();
 			c.delete(name, reverse);
-			c.insert(name, code + 20000000L, reverse);
+			c.insert(name, upCode, reverse);
 			tUpd += System.nanoTime() - s2;
+			if (i < VERIFY_CRUD_COUNT) {
+				long foundDel = c.search(name, reverse);
+				VerificationSample.crud(testName, "UPDATE", name, reverse, foundDel, 0);
+			}
+
 			long s3 = System.nanoTime();
-			c.delete("_BENCH_NEW_" + i, reverse);
+			c.delete(newName, reverse);
 			tDel += System.nanoTime() - s3;
+			if (i < VERIFY_CRUD_COUNT) {
+				long foundAfterDel = c.search(newName, reverse);
+				VerificationSample.crud(testName, "DELETE", newName, reverse, foundAfterDel, 0);
+			}
 		}
 		return new long[]{ tIns / 1_000_000, tUpd / 1_000_000, tDel / 1_000_000 };
 	}
 
-	private static long[] benchmarkCompCrudPart(CompressedTrie[] c, List<String[]> samples, boolean reverse) {
+	private static long[] benchmarkCompCrudPart(String testName, CompressedTrie[] c, List<String[]> samples, boolean reverse) {
 		long tIns = 0, tUpd = 0, tDel = 0;
+		int partCount = c.length;
 		for (int i = 0; i < samples.size(); i++) {
 			String name = samples.get(i)[0];
 			long code = Long.parseLong(samples.get(i)[1]);
-			int pid = (int) (code % 10);
+			int pid = (int) (Math.abs(code) % partCount);
 			long newCode = code + 10000000L;
-			int pidNew = (int) (newCode % 10);
+			int pidNew = (int) (Math.abs(newCode) % partCount);
+
+			String newName = "_BENCH_NEW_" + i;
 			long s1 = System.nanoTime();
-			c[pidNew].insert("_BENCH_NEW_" + i, newCode, reverse);
+			c[pidNew].insert(newName, newCode, reverse);
 			tIns += System.nanoTime() - s1;
+			if (i < VERIFY_CRUD_COUNT) {
+				long found = c[pidNew].search(newName, reverse);
+				VerificationSample.crud(testName, "INSERT", newName, reverse, found, 0);
+			}
+
 			long upCode = code + 20000000L;
-			int pidUp = (int) (upCode % 10);
+			int pidUp = (int) (Math.abs(upCode) % partCount);
 			long s2 = System.nanoTime();
 			c[pid].delete(name, reverse);
 			c[pidUp].insert(name, upCode, reverse);
 			tUpd += System.nanoTime() - s2;
+			if (i < VERIFY_CRUD_COUNT) {
+				long foundDel = c[pidUp].search(name, reverse);
+				VerificationSample.crud(testName, "UPDATE", name, reverse, foundDel, 0);
+			}
+
 			long s3 = System.nanoTime();
-			c[pidNew].delete("_BENCH_NEW_" + i, reverse);
+			c[pidNew].delete(newName, reverse);
 			tDel += System.nanoTime() - s3;
+			if (i < VERIFY_CRUD_COUNT) {
+				long foundAfterDel = c[pidNew].search(newName, reverse);
+				VerificationSample.crud(testName, "DELETE", newName, reverse, foundAfterDel, 0);
+			}
 		}
 		return new long[]{ tIns / 1_000_000, tUpd / 1_000_000, tDel / 1_000_000 };
 	}

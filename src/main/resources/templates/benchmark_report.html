@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trie 基准测试报表 - 增删改查统计</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+            margin-bottom: 8px;
+            font-size: 28px;
+        }
+        .subtitle { text-align: center; color: #666; margin-bottom: 32px; font-size: 14px; }
+
+        /* 统计卡片 */
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            text-align: center;
+        }
+        .card .label { font-size: 13px; color: #888; margin-bottom: 4px; }
+        .card .value { font-size: 28px; font-weight: 700; color: #1a73e8; }
+        .card .unit { font-size: 14px; color: #999; }
+
+        /* 图表区 */
+        .charts {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+        @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+        .chart-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .chart-box.full { grid-column: 1 / -1; }
+        .chart-box h3 { font-size: 16px; color: #333; margin-bottom: 16px; text-align: center; }
+        canvas { max-height: 380px; }
+
+        /* 详细表格 */
+        .table-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            overflow-x: auto;
+        }
+        .table-box h3 { font-size: 16px; margin-bottom: 16px; text-align: center; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th, td {
+            padding: 10px 12px;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+            white-space: nowrap;
+        }
+        tr:hover td { background: #f0f7ff; }
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .tag-std { background: #e8f0fe; color: #1a73e8; }
+        .tag-comp { background: #e6f4ea; color: #1e8e3e; }
+        .tag-best { background: #fef7e0; color: #e37400; font-weight: 700; }
+        .highlight { background: #fef7e0 !important; }
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #999;
+            font-size: 16px;
+        }
+        .no-data {
+            text-align: center;
+            padding: 80px 20px;
+            color: #999;
+        }
+        .no-data h2 { font-size: 48px; margin-bottom: 16px; }
+        .note {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #856404;
+            display: none;
+        }
+        .note.show { display: block; }
+        .btn-refresh {
+            display: inline-block;
+            padding: 8px 20px;
+            background: #1a73e8;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .btn-refresh:hover { background: #1557b0; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Trie 基准测试统计报表</h1>
+    <p class="subtitle">增删改查性能对比分析</p>
+
+    <div id="noteEmpty" class="note">暂无报表数据，请先运行 TrieBenchmarkRunner 生成测试数据。</div>
+
+    <div style="text-align:center;">
+        <button class="btn-refresh" onclick="loadData()">刷新数据</button>
+    </div>
+
+    <!-- 汇总卡片 -->
+    <div id="cardsArea" class="cards"></div>
+
+    <!-- 图表 -->
+    <div class="charts">
+        <div class="chart-box"><h3>增删改查耗时对比 (ms)</h3><canvas id="crudChart"></canvas></div>
+        <div class="chart-box"><h3>加载耗时 & 内存占用</h3><canvas id="loadMemChart"></canvas></div>
+    </div>
+    <div class="charts">
+        <div class="chart-box full"><h3>各操作吞吐量 (ops)</h3><canvas id="opsChart"></canvas></div>
+    </div>
+    <div class="charts">
+        <div class="chart-box full"><h3>各操作平均耗时 (ms/op)</h3><canvas id="avgTimeChart"></canvas></div>
+    </div>
+
+    <!-- 详细数据表 -->
+    <div id="tableArea" class="table-box">
+        <h3>详细测试数据</h3>
+        <div id="tableContent" class="loading">加载中...</div>
+    </div>
+</div>
+
+<script>
+    let chartInstances = {};
+
+    function destroyCharts() {
+        Object.values(chartInstances).forEach(c => c.destroy());
+        chartInstances = {};
+    }
+
+    async function loadData() {
+        const note = document.getElementById('noteEmpty');
+        const tableContent = document.getElementById('tableContent');
+        tableContent.innerHTML = '<div class="loading">加载中...</div>';
+        note.classList.remove('show');
+
+        try {
+            const resp = await fetch('/api/results');
+            const data = await resp.json();
+            if (!data || data.length === 0) {
+                note.classList.add('show');
+                tableContent.innerHTML = '<div class="no-data"><h2>📊</h2><p>暂无数据，请运行 TrieBenchmarkRunner 后再查看</p></div>';
+                document.getElementById('cardsArea').innerHTML = '';
+                destroyCharts();
+                return;
+            }
+            renderAll(data);
+        } catch (e) {
+            note.classList.add('show');
+            tableContent.innerHTML = '<div class="no-data"><p>加载失败: ' + e.message + '</p></div>';
+        }
+    }
+
+    function renderAll(data) {
+        // 汇总卡片
+        renderCards(data);
+        // 表格
+        renderTable(data);
+        // 图表
+        destroyCharts();
+        renderCrudChart(data);
+        renderLoadMemChart(data);
+        renderOpsChart(data);
+        renderAvgTimeChart(data);
+    }
+
+    function renderCards(data) {
+        const totalTests = data.length;
+        let minSearch = Infinity, minInsert = Infinity, minUpdate = Infinity, minDelete = Infinity;
+        let bestSearch = '', bestInsert = '', bestUpdate = '', bestDelete = '';
+
+        data.forEach(d => {
+            if (d.searchTimeMs < minSearch) { minSearch = d.searchTimeMs; bestSearch = d.testName; }
+            if (!d.immutable && d.insertTimeMs >= 0 && d.insertTimeMs < minInsert) { minInsert = d.insertTimeMs; bestInsert = d.testName; }
+            if (!d.immutable && d.updateTimeMs >= 0 && d.updateTimeMs < minUpdate) { minUpdate = d.updateTimeMs; bestUpdate = d.testName; }
+            if (!d.immutable && d.deleteTimeMs >= 0 && d.deleteTimeMs < minDelete) { minDelete = d.deleteTimeMs; bestDelete = d.testName; }
+        });
+
+        let html = `
+            <div class="card"><div class="label">测试方案数</div><div class="value">${totalTests}</div><div class="unit">个</div></div>
+            <div class="card"><div class="label">最佳查询</div><div class="value">${minSearch}</div><div class="unit">ms · ${bestSearch}</div></div>
+            <div class="card"><div class="label">最佳插入</div><div class="value">${minInsert === Infinity ? '-' : minInsert}</div><div class="unit">${minInsert === Infinity ? '' : 'ms · ' + bestInsert}</div></div>
+            <div class="card"><div class="label">最佳更新</div><div class="value">${minUpdate === Infinity ? '-' : minUpdate}</div><div class="unit">${minUpdate === Infinity ? '' : 'ms · ' + bestUpdate}</div></div>
+            <div class="card"><div class="label">最佳删除</div><div class="value">${minDelete === Infinity ? '-' : minDelete}</div><div class="unit">${minDelete === Infinity ? '' : 'ms · ' + bestDelete}</div></div>
+        `;
+        document.getElementById('cardsArea').innerHTML = html;
+    }
+
+    function renderTable(data) {
+        let html = `<table>
+            <thead><tr>
+                <th>测试方案</th><th>加载模式</th><th>数据量</th>
+                <th>加载耗时(ms)</th><th>内存(GB)</th>
+                <th>查询耗时(ms)</th><th>查询次数</th><th>查询平均(ms/op)</th>
+                <th>插入耗时(ms)</th><th>插入次数</th><th>插入平均(ms/op)</th>
+                <th>更新耗时(ms)</th><th>更新次数</th><th>更新平均(ms/op)</th>
+                <th>删除耗时(ms)</th><th>删除次数</th><th>删除平均(ms/op)</th>
+            </tr></thead><tbody>`;
+
+        const colors = ['#1a73e8','#34a853','#fbbc04','#ea4335','#673ab7','#00bcd4','#ff5722','#009688'];
+        data.forEach((d, i) => {
+            const isStd = d.testName.includes('标准树');
+            const tagClass = isStd ? 'tag-std' : 'tag-comp';
+            const tagText = isStd ? '标准树' : '压缩树';
+            html += `<tr>
+                <td><span class="tag ${tagClass}">${tagText}</span> ${d.testName}</td>
+                <td>${d.loadMode}</td>
+                <td>${(d.dataCount||0).toLocaleString()}</td>
+                <td>${(d.loadTimeMs||0).toLocaleString()}</td>
+                <td>${(d.memoryGB||0).toFixed(2)}</td>
+                <td>${(d.searchTimeMs||0).toLocaleString()}</td>
+                <td>${(d.searchOps||0).toLocaleString()}</td>
+                <td>${d.searchOps > 0 ? (d.searchTimeMs/d.searchOps).toFixed(3) : '-'}</td>
+                <td>${d.immutable ? '-' : (d.insertTimeMs||0).toLocaleString()}</td>
+                <td>${d.immutable ? '-' : (d.insertOps||0).toLocaleString()}</td>
+                <td>${(!d.immutable && d.insertOps > 0) ? (d.insertTimeMs/d.insertOps).toFixed(3) : '-'}</td>
+                <td>${d.immutable ? '-' : (d.updateTimeMs||0).toLocaleString()}</td>
+                <td>${d.immutable ? '-' : (d.updateOps||0).toLocaleString()}</td>
+                <td>${(!d.immutable && d.updateOps > 0) ? (d.updateTimeMs/d.updateOps).toFixed(3) : '-'}</td>
+                <td>${d.immutable ? '-' : (d.deleteTimeMs||0).toLocaleString()}</td>
+                <td>${d.immutable ? '-' : (d.deleteOps||0).toLocaleString()}</td>
+                <td>${(!d.immutable && d.deleteOps > 0) ? (d.deleteTimeMs/d.deleteOps).toFixed(3) : '-'}</td>
+            </tr>`;
+        });
+        html += '</tbody></table>';
+        document.getElementById('tableContent').innerHTML = html;
+    }
+
+    function renderCrudChart(data) {
+        const labels = data.map(d => d.testName);
+        const searchData  = data.map(d => d.searchTimeMs || 0);
+        const insertData  = data.map(d => d.immutable ? 0 : (d.insertTimeMs || 0));
+        const updateData  = data.map(d => d.immutable ? 0 : (d.updateTimeMs || 0));
+        const deleteData  = data.map(d => d.immutable ? 0 : (d.deleteTimeMs || 0));
+
+        chartInstances.crud = new Chart(document.getElementById('crudChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: '查询(Search)', data: searchData, backgroundColor: '#4285f4', borderColor: '#4285f4', borderWidth: 1 },
+                    { label: '插入(Insert)', data: insertData, backgroundColor: '#34a853', borderColor: '#34a853', borderWidth: 1 },
+                    { label: '更新(Update)', data: updateData, backgroundColor: '#fbbc04', borderColor: '#fbbc04', borderWidth: 1 },
+                    { label: '删除(Delete)', data: deleteData, backgroundColor: '#ea4335', borderColor: '#ea4335', borderWidth: 1 }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw.toLocaleString() + ' ms' } }
+                },
+                scales: {
+                    y: { title: { display: true, text: '耗时 (ms)' }, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    function renderLoadMemChart(data) {
+        const labels = data.map(d => d.testName);
+        chartInstances.loadMem = new Chart(document.getElementById('loadMemChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: '加载耗时 (ms)',   data: data.map(d => d.loadTimeMs || 0), backgroundColor: '#673ab7', yAxisID: 'y' },
+                    { label: '内存占用 (GB×1000)', data: data.map(d => (d.memoryGB || 0) * 1000), backgroundColor: '#00bcd4', yAxisID: 'y1' }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                if (ctx.datasetIndex === 0) return '加载: ' + ctx.raw.toLocaleString() + ' ms';
+                                return '内存: ' + (ctx.raw / 1000).toFixed(2) + ' GB';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y:  { type: 'linear', position: 'left',  title: { display: true, text: '加载耗时 (ms)' }, beginAtZero: true },
+                    y1: { type: 'linear', position: 'right', title: { display: true, text: '内存 (GB)' },
+                          ticks: { callback: v => (v/1000).toFixed(2) + ' GB' }, beginAtZero: true, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+    }
+
+    function renderOpsChart(data) {
+        const labels = data.map(d => d.testName);
+        chartInstances.ops = new Chart(document.getElementById('opsChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: '查询次数', data: data.map(d => d.searchOps || 0), backgroundColor: '#4285f4' },
+                    { label: '插入次数', data: data.map(d => d.immutable ? 0 : (d.insertOps || 0)), backgroundColor: '#34a853' },
+                    { label: '更新次数', data: data.map(d => d.immutable ? 0 : (d.updateOps || 0)), backgroundColor: '#fbbc04' },
+                    { label: '删除次数', data: data.map(d => d.immutable ? 0 : (d.deleteOps || 0)), backgroundColor: '#ea4335' }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'top' } },
+                scales: { y: { title: { display: true, text: '操作次数' }, beginAtZero: true } }
+            }
+        });
+    }
+
+    function renderAvgTimeChart(data) {
+        const labels = data.map(d => d.testName);
+        const avgSearch  = data.map(d => d.searchOps > 0 ? +(d.searchTimeMs / d.searchOps).toFixed(3) : 0);
+        const avgInsert  = data.map(d => (!d.immutable && d.insertOps > 0) ? +(d.insertTimeMs / d.insertOps).toFixed(3) : 0);
+        const avgUpdate  = data.map(d => (!d.immutable && d.updateOps > 0) ? +(d.updateTimeMs / d.updateOps).toFixed(3) : 0);
+        const avgDelete  = data.map(d => (!d.immutable && d.deleteOps > 0) ? +(d.deleteTimeMs / d.deleteOps).toFixed(3) : 0);
+
+        chartInstances.avgTime = new Chart(document.getElementById('avgTimeChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: '查询平均 (ms/op)', data: avgSearch, backgroundColor: '#4285f4' },
+                    { label: '插入平均 (ms/op)', data: avgInsert, backgroundColor: '#34a853' },
+                    { label: '更新平均 (ms/op)', data: avgUpdate, backgroundColor: '#fbbc04' },
+                    { label: '删除平均 (ms/op)', data: avgDelete, backgroundColor: '#ea4335' }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw + ' ms/op' } }
+                },
+                scales: { y: { title: { display: true, text: '平均耗时 (ms/op)' }, beginAtZero: true } }
+            }
+        });
+    }
+
+    // 页面加载时自动获取数据
+    document.addEventListener('DOMContentLoaded', loadData);
+</script>
+</body>
+</html>

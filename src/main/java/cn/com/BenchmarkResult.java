@@ -12,6 +12,7 @@ public class BenchmarkResult {
 
 	public long searchTimeMs, insertTimeMs, updateTimeMs, deleteTimeMs;
 	public int searchOps, insertOps, updateOps, deleteOps;
+	public long nodeCount = -1;
 
 	public static final List<BenchmarkResult> results = new ArrayList<>();
 
@@ -26,6 +27,11 @@ public class BenchmarkResult {
 
 	public static BenchmarkResult create(String testName, String loadMode, int dataCount, long loadMs, double memGb, boolean immutable) {
 		return new BenchmarkResult(testName, loadMode, dataCount, loadMs, memGb, immutable);
+	}
+
+	public BenchmarkResult nodes(long count) {
+		this.nodeCount = count;
+		return this;
 	}
 
 	public BenchmarkResult search(long timeMs, int ops) {
@@ -46,8 +52,8 @@ public class BenchmarkResult {
 
 	public void report() {
 		results.add(this);
-		System.out.printf("    [报表] %s | 数据量:%d | 内存:%.1fG | 加载:%dms | 查:%dms(%d次) | 增:%dms(%d次) | 改:%dms(%d次) | 删:%dms(%d次)%n",
-				testName, dataCount, memoryGB, loadTimeMs,
+		System.out.printf("    [报表] %s | 数据量:%d | 节点数:%,d | 内存:%.1fG | 加载:%dms | 查:%dms(%d次) | 增:%dms(%d次) | 改:%dms(%d次) | 删:%dms(%d次)%n",
+				testName, dataCount, nodeCount, memoryGB, loadTimeMs,
 				searchTimeMs, searchOps,
 				immutable ? -1 : insertTimeMs, immutable ? -1 : insertOps,
 				immutable ? -1 : updateTimeMs, immutable ? -1 : updateOps,
@@ -74,6 +80,7 @@ public class BenchmarkResult {
 		sb.append("    \"testName\": \"").append(esc(testName)).append("\",\n");
 		sb.append("    \"loadMode\": \"").append(esc(loadMode)).append("\",\n");
 		sb.append("    \"dataCount\": ").append(dataCount).append(",\n");
+		sb.append("    \"nodeCount\": ").append(nodeCount).append(",\n");
 		sb.append("    \"memoryMB\": ").append(Math.round(memoryMB * 10) / 10.0).append(",\n");
 		sb.append("    \"memoryGB\": ").append(memoryGB).append(",\n");
 		sb.append("    \"loadTimeMs\": ").append(loadTimeMs).append(",\n");
