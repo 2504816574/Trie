@@ -168,14 +168,14 @@ public class CompressedTrie {
 	}
 
 	/**
-	 * @return true 表示该子节点应被父节点移除
+	 * @return true 表示目标词存在并已删除
 	 */
 	private boolean delete(RadixNode node, int[] cps, int pos) {
 		if (pos >= cps.length) {
 			if (node.status != 3) return false;
 			node.status = 1;
 			node.code = 0;
-			return !node.hasChildren();
+			return true;
 		}
 
 		if (!node.hasChildren()) return false;
@@ -184,19 +184,17 @@ public class CompressedTrie {
 		if (child == null) return false;
 		if (!matchLabel(child.label, cps, pos)) return false;
 
-		boolean shouldRemove = delete(child, cps, pos + child.label.length);
-		if (!shouldRemove) {
-			mergeIfSingleChild(node);
-			return false;
-		}
+		boolean deleted = delete(child, cps, pos + child.label.length);
+		if (!deleted) return false;
 
-		removeChild(node, child);
-
-		if (node.status != 3 && node.childrenCount == 1) {
-			mergeWithChild(node, node.children[0]);
-			return node == root ? false : true; // root 不消除
+		if (child.status != 3) {
+			if (!child.hasChildren()) {
+				removeChild(node, child);
+			} else if (child.childrenCount == 1) {
+				mergeWithChild(child, child.children[0]);
+			}
 		}
-		return !node.hasChildren();
+		return true;
 	}
 
 	private void mergeWithChild(RadixNode parent, RadixNode child) {
@@ -208,12 +206,6 @@ public class CompressedTrie {
 		parent.code = child.code;
 		parent.children = child.children;
 		parent.childrenCount = child.childrenCount;
-	}
-
-	private void mergeIfSingleChild(RadixNode node) {
-		if (node.status == 3) return;
-		if (node.childrenCount != 1) return;
-		mergeWithChild(node, node.children[0]);
 	}
 
 	// ========================================================================

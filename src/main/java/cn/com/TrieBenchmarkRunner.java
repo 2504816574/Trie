@@ -12,7 +12,7 @@ public class TrieBenchmarkRunner {
 	private static final boolean SAVE_TO_FILE = false;
 	private static final int SEARCH_COUNT = 10000;
 	private static final int MUTATE_COUNT = 1000;
-	private static final int[] COMP_PART_SUFFIXES = {0, 1, 2, 3, 4, 5, 6};
+	private static final int[] COMP_PART_SUFFIXES = {0, 1, 2, 3, 4, 5, 6,7,8,9};
 	private static final int VERIFY_SAMPLE_COUNT = 300;
 	private static final int VERIFY_CRUD_COUNT = 100;
 	private static int totalDataCount = 0;
@@ -514,18 +514,24 @@ public class TrieBenchmarkRunner {
 	// --- 压缩树分区 search ---
 	private static long benchmarkSearchCompPart(String testName, CompressedTrie[] tries, List<String> queries, boolean reverse) {
 		long start = System.nanoTime();
-		int n = tries.length;
 		for (int i = 0; i < queries.size(); i++) {
 			String q = queries.get(i);
-			int pid = Math.abs(q.hashCode()) % n;
 			long t0 = System.nanoTime();
-			List<MatchResult> matches = tries[pid].scan(q, reverse);
+			List<MatchResult> matches = scanPartitionedCompressed(tries, q, reverse);
 			long dur = System.nanoTime() - t0;
 			if (i < VERIFY_SAMPLE_COUNT) {
 				VerificationSample.search(testName, q, reverse, matches, dur);
 			}
 		}
 		return (System.nanoTime() - start) / 1_000_000;
+	}
+
+	static List<MatchResult> scanPartitionedCompressed(CompressedTrie[] tries, String query, boolean reverse) {
+		List<MatchResult> matches = new ArrayList<>();
+		for (CompressedTrie trie : tries) {
+			matches.addAll(trie.scan(query, reverse));
+		}
+		return matches;
 	}
 
 	// --- CRUD benchmark ---
